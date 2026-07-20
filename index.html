@@ -3,10 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>LQueue</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://kit.fontawesome.com/de4851ac23.js" crossorigin="anonymous"></script>
+    <style>
+        /* Enkel CSS ifall style.css saknas för att sidan ska se bra ut */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        nav {
+            background-color: #e4002b;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .title {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 0;
+        }
+        .notice {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        .parent {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .info-box {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        .info-icon { color: #e4002b; }
+        .info-lbl { font-size: 18px; font-weight: bold; margin: 0; }
+        .person-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .person-box {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.3s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .person-box.glow {
+            background: #e4002b;
+            box-shadow: 0 0 10px rgba(228, 0, 43, 0.5);
+        }
+        .custom-btn {
+            background: #333;
+            color: white;
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .custom-btn:hover { background: #555; }
+        .attraction-holder {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .attraction-box {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 10px;
+        }
+        .attraction-img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+        .attraction-info {
+            margin-left: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        #title { font-weight: bold; margin: 0 0 5px 0; }
+        #description { font-size: 12px; color: #666; margin: 0 0 5px 0; }
+        #time { font-weight: bold; margin: 0; }
+        #loading { text-align: center; color: #666; }
+    </style>
 </head>
 <body>
     <nav>
@@ -49,74 +150,155 @@
     </div>
     <div class="attraction-holder">
     </div>
+    
     <script>
-const t = Array.from(document.querySelectorAll(".person-box"));
-var e = 1;
+    const personBoxes = Array.from(document.querySelectorAll(".person-box"));
+    let queueSize = 1;
 
-function n(t) {
-    const [e, n] = t.split(":").map(Number), a = new Date, i = a.getHours(), o = a.getMinutes(), r = new Date(a.getFullYear(), a.getMonth(), a.getDate(), i, o);
-    let s = new Date(a.getFullYear(), a.getMonth(), a.getDate(), e, n) - r;
-    s < 0 && (s += 864e5);
-    const l = Math.floor(s / 36e5),
-        c = Math.floor(s % 36e5 / 6e4);
-    return l < 1 ? `${c}min` : `${l}h ${c}min`
-}
+    // Hanterare för att välja antal personer
+    personBoxes.forEach((box, index) => {
+        box.onclick = function() {
+            queueSize = index + 1;
+            // Ta bort glow från alla
+            personBoxes.forEach(b => b.classList.remove("glow"));
+            // Lägg till glow upp till den valda
+            for (let i = 0; i <= index; i++) {
+                personBoxes[i].classList.add("glow");
+            }
+            console.log("Antal personer valda:", queueSize);
+        };
+    });
 
-function a(t) {
-    const e = new Date(t),
-        n = new Date(e.getTime() + 72e5);
-    return `${String(n.getUTCHours()).padStart(2,"0")}:${String(n.getUTCMinutes()).padStart(2,"0")}:${String(n.getUTCSeconds()).padStart(2,"0")}`
-}
-t.forEach(((n, a) => {
-    n.onclick = function() {
-        e = a + 1;
-        for (let e = 0; e < t.length; e++) t[e].classList.remove("glow");
-        for (let e = 0; e < a + 1; e++) t[e].classList.add("glow");
-        console.log(e)
+    // Hjälpfunktion: Formaterar tid och lägger till +2 timmar (som originalkoden)
+    function formatTime(dateStr) {
+        const date = new Date(dateStr);
+        const adjustedDate = new Date(date.getTime() + 7200000); 
+        return `${String(adjustedDate.getUTCHours()).padStart(2,"0")}:${String(adjustedDate.getUTCMinutes()).padStart(2,"0")}:${String(adjustedDate.getUTCSeconds()).padStart(2,"0")}`;
     }
-})), $(".custom-btn").click((function() {
-    $(".attraction-holder").empty();
-    var t = {};
-    $.getJSON("https://www.liseberg.se/sv/api/app/attractions", (function(i) {
-        let o = [];
-        i.forEach((function(n) {
-            if (n.virtualQueueId) {
-                let i = $.getJSON("https://virtualqueue.liseberg.se/Queue/" + n.virtualQueueId).then((function(i) {
-                    i.estimatedTimes[e - 1] && (t[n.virtualQueueId] = {
-                        Time: a(i.estimatedTimes[e - 1].time),
-                        queueData: i,
-                        Data: n
-                    })
-                }));
-                o.push(i)
-            }
-        })), Promise.all(o).then((function() {
-            var e = Object.entries(t);
 
-            function a(t) {
-                var [e, n, a] = t.split(":").map(Number);
-                return e < 0 || e >= 24 || n < 0 || n >= 60 || a < 0 || a >= 60 ? 1 / 0 : new Date(1970, 0, 1, e, n, a).getTime()
-            }
-            e.sort((function(t, e) {
-                return a(t[1].Time) - a(e[1].Time)
-            })), Object.keys(e).forEach((function(t) {
-                let a = e[t][1],
-                    i = a.Time;
-                console.warn(e[t][0], i),
-                    function(t) {
-                        const e = new Date,
-                            [n, a, i] = t.split(":").map(Number),
-                            o = new Date;
-                        o.setHours(n), o.setMinutes(a), o.setSeconds(i);
-                        const r = e - o;
-                        return Math.floor(r / 1e3 / 60)
-                    }(i) >= 0 ? (i = '<p style="color: rgb(80, 189, 76);" id="time">Now!</p>', elementHTML = '\n<div class="attraction-box">\n<div style="display: flex; flex-direction: row;">\n<div>\n    <img class="attraction-img" src="' + a.Data.images.small + '" alt="">\n</div>\n<div class="attraction-info">\n    <p id="title">' + a.queueData.attractionName + '</p>\n    <p id="description">Physical queue: ' + a.Data.state.minWaitTime + "-" + a.Data.state.maxWaitTime + " min</p>\n    " + i + "\n</div>\n</div>\n</div>", $(".attraction-holder").append(elementHTML)) : (i = n(i), console.log(i, n(i)), i = '<p id="time">' + i + "</p>", elementHTML = '\n<div class="attraction-box">\n<div style="display: flex; flex-direction: row;">\n<div>\n    <img class="attraction-img" src="' + a.Data.images.small + '" alt="">\n</div>\n<div class="attraction-info">\n    <p id="title">' + a.queueData.attractionName + '</p>\n    <p id="description">Physical queue: ' + a.Data.state.minWaitTime + "-" + a.Data.state.maxWaitTime + " min</p>\n    " + i + "\n</div>\n</div>\n</div>", $(".attraction-holder").append(elementHTML))
-            }))
-        })).catch((function(t) {
-            console.error("Error occurred:", t)
-        }))
-    }))
-}));
+    // Hjälpfunktion: Räknar ut återstående tid
+    function getRemainingTime(timeStr) {
+        const [h, m] = timeStr.split(":").map(Number);
+        const now = new Date();
+        let target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+        let diff = target - now;
+        if (diff < 0) diff += 86400000; // Lägg till 24h om tiden redan passerats
+        const hours = Math.floor(diff / 3600000);
+        const mins = Math.floor((diff % 3600000) / 60000);
+        return hours < 1 ? `${mins}min` : `${hours}h ${mins}min`;
+    }
+
+    // Hjälpfunktion: Hur många minuter sedan target-tiden?
+    function getMinutesSince(timeStr) {
+        const [h, m, s] = timeStr.split(":").map(Number);
+        const now = new Date();
+        const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, s);
+        return Math.floor((now - target) / 60000);
+    }
+
+    // Sök-knappen
+    $(".custom-btn").click(async function() {
+        $(".attraction-holder").empty();
+        $(".attraction-holder").append('<p id="loading">Hämtar data från Liseberg...</p>');
+
+        // Använder en CORS-proxy för att kunna hämta datan från webbläsaren
+        const proxy = "https://corsproxy.io/?url=";
+        const attractionsUrl = proxy + encodeURIComponent("https://www.liseberg.se/sv/api/app/attractions");
+
+        try {
+            const attractions = await $.getJSON(attractionsUrl);
+            let promises = [];
+            let combinedData = {};
+
+            attractions.forEach(function(attraction) {
+                if (attraction.virtualQueueId) {
+                    let queueUrl = proxy + encodeURIComponent("https://virtualqueue.liseberg.se/Queue/" + attraction.virtualQueueId);
+                    
+                    let promise = $.getJSON(queueUrl).then(function(queueData) {
+                        let vqTime = null;
+                        // Kolla om estimatedTimes existerar och har rätt index
+                        if (queueData.estimatedTimes && queueData.estimatedTimes[queueSize - 1]) {
+                            vqTime = formatTime(queueData.estimatedTimes[queueSize - 1].time);
+                        }
+                        
+                        combinedData[attraction.virtualQueueId] = {
+                            Time: vqTime,
+                            queueData: queueData,
+                            Data: attraction
+                        };
+                    }).catch(function(err) {
+                        console.error("Kunde inte hämta kö för " + attraction.virtualQueueId, err);
+                    });
+                    
+                    promises.push(promise);
+                }
+            });
+
+            Promise.all(promises).then(function() {
+                $("#loading").remove();
+                let entries = Object.entries(combinedData);
+
+                // Sortera efter tid (de utan tid hamnar sist)
+                entries.sort(function(a, b) {
+                    let timeA = a[1].Time || "99:99:99";
+                    let timeB = b[1].Time || "99:99:99";
+                    return timeA.localeCompare(timeB);
+                });
+
+                if (entries.length === 0) {
+                    $(".attraction-holder").append('<p>Inga attraktioner med virtuella köer hittades.</p>');
+                }
+
+                entries.forEach(function(entry) {
+                    let data = entry[1];
+                    let timeStr = data.Time;
+                    let timeHtml = '';
+
+                    if (!timeStr) {
+                        timeHtml = '<p style="color: gray;" id="time">VQ Closed</p>';
+                    } else if (getMinutesSince(timeStr) >= 0) {
+                        timeHtml = '<p style="color: rgb(80, 189, 76);" id="time">Now!</p>';
+                    } else {
+                        timeHtml = '<p id="time">' + getRemainingTime(timeStr) + '</p>';
+                    }
+
+                    // Hantera -1 i kötider
+                    let minWait = data.Data.state.minWaitTime;
+                    let maxWait = data.Data.state.maxWaitTime;
+                    let queueText = '';
+                    if (minWait === -1 || maxWait === -1 || !data.Data.state.isOpen) {
+                        queueText = 'Physical queue: Closed';
+                    } else {
+                        queueText = 'Physical queue: ' + minWait + '-' + maxWait + ' min';
+                    }
+
+                    let elementHTML = `
+                    <div class="attraction-box">
+                        <div style="display: flex; flex-direction: row;">
+                            <div>
+                                <img class="attraction-img" src="${data.Data.images.small}" alt="">
+                            </div>
+                            <div class="attraction-info">
+                                <p id="title">${data.queueData.attractionName}</p>
+                                <p id="description">${queueText}</p>
+                                ${timeHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                    
+                    $(".attraction-holder").append(elementHTML);
+                });
+            }).catch(function(err) {
+                $("#loading").remove();
+                console.error("Fel vid sortering/rendering:", err);
+            });
+
+        } catch (err) {
+            $("#loading").remove();
+            console.error("Kunde inte hämta attraktioner:", err);
+            $(".attraction-holder").append('<p>Ett fel uppstod vid hämtning av data.</p>');
+        }
+    });
     </script>
 </body>
 </html>
