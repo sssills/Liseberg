@@ -4,11 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LQueue</title>
-    <link rel="stylesheet" href="style.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://kit.fontawesome.com/de4851ac23.js" crossorigin="anonymous"></script>
     <style>
-        /* Enkel CSS ifall style.css saknas för att sidan ska se bra ut */
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f9;
@@ -107,9 +105,27 @@
         #description { font-size: 12px; color: #666; margin: 0 0 5px 0; }
         #time { font-weight: bold; margin: 0; }
         #loading { text-align: center; color: #666; }
+
+        /* Version-badge i hörnet */
+        .version-badge {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background-color: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body>
+    <!-- Version-badge -->
+    <div class="version-badge">v2</div>
+
     <nav>
         <p class="title">LQueue</p>
     </nav>
@@ -148,20 +164,17 @@
     <div class="custom-btn">
         <p>Search</p>
     </div>
-    <div class="attraction-holder">
-    </div>
+    <div class="attraction-holder"></div>
     
     <script>
     const personBoxes = Array.from(document.querySelectorAll(".person-box"));
     let queueSize = 1;
 
-    // Hanterare för att välja antal personer
+    // Hantera val av antal personer
     personBoxes.forEach((box, index) => {
         box.onclick = function() {
             queueSize = index + 1;
-            // Ta bort glow från alla
             personBoxes.forEach(b => b.classList.remove("glow"));
-            // Lägg till glow upp till den valda
             for (let i = 0; i <= index; i++) {
                 personBoxes[i].classList.add("glow");
             }
@@ -169,26 +182,25 @@
         };
     });
 
-    // Hjälpfunktion: Formaterar tid och lägger till +2 timmar (som originalkoden)
+    // Tidshanterare
     function formatTime(dateStr) {
+        if (!dateStr) return null;
         const date = new Date(dateStr);
         const adjustedDate = new Date(date.getTime() + 7200000); 
         return `${String(adjustedDate.getUTCHours()).padStart(2,"0")}:${String(adjustedDate.getUTCMinutes()).padStart(2,"0")}:${String(adjustedDate.getUTCSeconds()).padStart(2,"0")}`;
     }
 
-    // Hjälpfunktion: Räknar ut återstående tid
     function getRemainingTime(timeStr) {
         const [h, m] = timeStr.split(":").map(Number);
         const now = new Date();
         let target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
         let diff = target - now;
-        if (diff < 0) diff += 86400000; // Lägg till 24h om tiden redan passerats
+        if (diff < 0) diff += 86400000;
         const hours = Math.floor(diff / 3600000);
         const mins = Math.floor((diff % 3600000) / 60000);
         return hours < 1 ? `${mins}min` : `${hours}h ${mins}min`;
     }
 
-    // Hjälpfunktion: Hur många minuter sedan target-tiden?
     function getMinutesSince(timeStr) {
         const [h, m, s] = timeStr.split(":").map(Number);
         const now = new Date();
@@ -201,101 +213,110 @@
         $(".attraction-holder").empty();
         $(".attraction-holder").append('<p id="loading">Hämtar data från Liseberg...</p>');
 
-        // Använder en CORS-proxy för att kunna hämta datan från webbläsaren
+        // Proxy för att undvika CORS-fel i webbläsaren
         const proxy = "https://corsproxy.io/?url=";
         const attractionsUrl = proxy + encodeURIComponent("https://www.liseberg.se/sv/api/app/attractions");
+        const vqListUrl = proxy + encodeURIComponent("https://virtualqueue.liseberg.se/Queue/");
 
         try {
-            const attractions = await $.getJSON(attractionsUrl);
-            let promises = [];
-            let combinedData = {};
+            // Hämta både attraktioner och den fullständiga listan för virtuella köer parallellt
+            const [attractions, vqList] = await Promise.all([
+                $.getJSON(attractionsUrl),
+                $.getJSON(vqListUrl)
+            ]);
 
-            attractions.forEach(function(attraction) {
-                if (attraction.virtualQueueId) {
-                    let queueUrl = proxy + encodeURIComponent("https://virtualqueue.liseberg.se/Queue/" + attraction.virtualQueueId);
-                    
-                    let promise = $.getJSON(queueUrl).then(function(queueData) {
-                        let vqTime = null;
-                        // Kolla om estimatedTimes existerar och har rätt index
-                        if (queueData.estimatedTimes && queueData.estimatedTimes[queueSize - 1]) {
-                            vqTime = formatTime(queueData.estimatedTimes[queueSize - 1].time);
-                        }
-                        
-                        combinedData[attraction.virtualQueueId] = {
-                            Time: vqTime,
-                            queueData: queueData,
-                            Data: attraction
-                        };
-                    }).catch(function(err) {
-                        console.error("Kunde inte hämta kö för " + attraction.virtualQueueId, err);
-                    });
-                    
-                    promises.push(promise);
-                }
+            $("#loading").remove();
+
+            // Skapa en lookup för attraktioner där vi matchar på namn istället för virtualQueueId
+            const attractionsMap = {};
+            attractions.forEach(attr => {
+                attractionsMap[attr.title.toLowerCase()] = attr;
             });
 
-            Promise.all(promises).then(function() {
-                $("#loading").remove();
-                let entries = Object.entries(combinedData);
+            let combinedData = [];
 
-                // Sortera efter tid (de utan tid hamnar sist)
-                entries.sort(function(a, b) {
-                    let timeA = a[1].Time || "99:99:99";
-                    let timeB = b[1].Time || "99:99:99";
-                    return timeA.localeCompare(timeB);
-                });
-
-                if (entries.length === 0) {
-                    $(".attraction-holder").append('<p>Inga attraktioner med virtuella köer hittades.</p>');
+            // Gå igenom alla virtuella köer vi fick från /Queue/
+            vqList.forEach(vq => {
+                // Försök hitta matchande attraktion (Liseberg skickar ibland med specialtecken)
+                let matchedAttraction = attractionsMap[vq.attractionName.toLowerCase()];
+                
+                // Specialfall för "Ahlgrens bilar-gondolen" som matchar "Radiobilarna"
+                if (!matchedAttraction && vq.attractionName.includes("Ahlgrens bilar")) {
+                    matchedAttraction = attractionsMap["radiobilarna"];
                 }
 
-                entries.forEach(function(entry) {
-                    let data = entry[1];
-                    let timeStr = data.Time;
-                    let timeHtml = '';
+                let vqTime = null;
+                // Kolla om estimatedTimes existerar för valt antal personer
+                if (vq.estimatedTimes && vq.estimatedTimes[queueSize - 1]) {
+                    vqTime = formatTime(vq.estimatedTimes[queueSize - 1].time);
+                }
 
-                    if (!timeStr) {
-                        timeHtml = '<p style="color: gray;" id="time">VQ Closed</p>';
-                    } else if (getMinutesSince(timeStr) >= 0) {
-                        timeHtml = '<p style="color: rgb(80, 189, 76);" id="time">Now!</p>';
-                    } else {
-                        timeHtml = '<p id="time">' + getRemainingTime(timeStr) + '</p>';
-                    }
+                combinedData.push({
+                    Time: vqTime,
+                    queueData: vq,
+                    Data: matchedAttraction // Kan vara undefined, hanteras nedan
+                });
+            });
 
-                    // Hantera -1 i kötider
+            // Sortera efter tid
+            combinedData.sort((a, b) => {
+                let timeA = a.Time || "99:99:99";
+                let timeB = b.Time || "99:99:99";
+                return timeA.localeCompare(timeB);
+            });
+
+            if (combinedData.length === 0) {
+                $(".attraction-holder").append('<p>Inga virtuella köer hittades.</p>');
+            }
+
+            // Rendera ut allt
+            combinedData.forEach(data => {
+                let timeStr = data.Time;
+                let timeHtml = '';
+
+                if (!timeStr) {
+                    timeHtml = `<p style="color: gray;" id="time">${data.queueData.status || 'VQ Closed'}</p>`;
+                } else if (getMinutesSince(timeStr) >= 0) {
+                    timeHtml = '<p style="color: rgb(80, 189, 76);" id="time">Now!</p>';
+                } else {
+                    timeHtml = '<p id="time">' + getRemainingTime(timeStr) + '</p>';
+                }
+
+                let image = "https://via.placeholder.com/80";
+                let queueText = 'Physical queue: N/A';
+
+                // Om vi hittade matchande attraktionsdata, använd den
+                if (data.Data) {
+                    image = data.Data.images.small;
                     let minWait = data.Data.state.minWaitTime;
                     let maxWait = data.Data.state.maxWaitTime;
-                    let queueText = '';
                     if (minWait === -1 || maxWait === -1 || !data.Data.state.isOpen) {
                         queueText = 'Physical queue: Closed';
                     } else {
-                        queueText = 'Physical queue: ' + minWait + '-' + maxWait + ' min';
+                        queueText = `Physical queue: ${minWait}-${maxWait} min`;
                     }
+                }
 
-                    let elementHTML = `
-                    <div class="attraction-box">
-                        <div style="display: flex; flex-direction: row;">
-                            <div>
-                                <img class="attraction-img" src="${data.Data.images.small}" alt="">
-                            </div>
-                            <div class="attraction-info">
-                                <p id="title">${data.queueData.attractionName}</p>
-                                <p id="description">${queueText}</p>
-                                ${timeHtml}
-                            </div>
+                let elementHTML = `
+                <div class="attraction-box">
+                    <div style="display: flex; flex-direction: row;">
+                        <div>
+                            <img class="attraction-img" src="${image}" alt="">
                         </div>
-                    </div>`;
-                    
-                    $(".attraction-holder").append(elementHTML);
-                });
-            }).catch(function(err) {
-                $("#loading").remove();
-                console.error("Fel vid sortering/rendering:", err);
+                        <div class="attraction-info">
+                            <p id="title">${data.queueData.attractionName}</p>
+                            <p id="description">${queueText}</p>
+                            ${timeHtml}
+                        </div>
+                    </div>
+                </div>`;
+                
+                $(".attraction-holder").append(elementHTML);
             });
 
         } catch (err) {
             $("#loading").remove();
-            console.error("Kunde inte hämta attraktioner:", err);
+            console.error("Fel vid hämtning:", err);
             $(".attraction-holder").append('<p>Ett fel uppstod vid hämtning av data.</p>');
         }
     });
