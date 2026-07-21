@@ -269,32 +269,6 @@
         };
     });
 
-    // Tidshanterare
-    function formatTime(dateStr) {
-        if (!dateStr) return null;
-        const date = new Date(dateStr);
-        const adjustedDate = new Date(date.getTime() + 7200000); 
-        return `${String(adjustedDate.getUTCHours()).padStart(2,"0")}:${String(adjustedDate.getUTCMinutes()).padStart(2,"0")}:${String(adjustedDate.getUTCSeconds()).padStart(2,"0")}`;
-    }
-
-    function getRemainingTime(timeStr) {
-        const [h, m] = timeStr.split(":").map(Number);
-        const now = new Date();
-        let target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
-        let diff = target - now;
-        if (diff < 0) diff += 86400000;
-        const hours = Math.floor(diff / 3600000);
-        const mins = Math.floor((diff % 3600000) / 60000);
-        return hours < 1 ? `${mins}min` : `${hours}h ${mins}min`;
-    }
-
-    function getMinutesSince(timeStr) {
-        const [h, m, s] = timeStr.split(":").map(Number);
-        const now = new Date();
-        const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, s);
-        return Math.floor((now - target) / 60000);
-    }
-
     // Sök-knappen
     $(".custom-btn").click(async function() {
         $(".attraction-holder").empty();
@@ -314,7 +288,7 @@
 
             $("#loading").remove();
 
-            // Skapa en lookup för attraktioner där vi matchar på namn istället för virtualQueueId
+            // Skapa en lookup för attraktioner där vi matchar på namn
             const attractionsMap = {};
             attractions.forEach(attr => {
                 attractionsMap[attr.title.toLowerCase()] = attr;
@@ -324,32 +298,44 @@
 
             // Gå igenom alla virtuella köer vi fick från /Queue/
             vqList.forEach(vq => {
-                // Försök hitta matchande attraktion (Liseberg skickar ibland med specialtecken)
                 let matchedAttraction = attractionsMap[vq.attractionName.toLowerCase()];
                 
-                // Specialfall för "Ahlgrens bilar-gondolen" som matchar "Radiobilarna"
+                // Specialfall för "Ahlgrens bilar-gondolen"
                 if (!matchedAttraction && vq.attractionName.includes("Ahlgrens bilar")) {
                     matchedAttraction = attractionsMap["radiobilarna"];
                 }
 
-                let vqTime = null;
-                // Kolla om estimatedTimes existerar för valt antal personer
-                if (vq.estimatedTimes && vq.estimatedTimes[queueSize - 1]) {
-                    vqTime = formatTime(vq.estimatedTimes[queueSize - 1].time);
+                let targetToday = null;
+                let isOpenVQ = vq.estimatedTimes && vq.estimatedTimes.length > 0;
+
+                if (isOpenVQ) {
+                    let idx = Math.min(queueSize - 1, vq.estimatedTimes.length - 1);
+                    let timeObj = vq.estimatedTimes[idx];
+                    
+                    if (timeObj && timeObj.time) {
+                        // API:et skickar tider som "2026-07-21T08:05:00.000Z" (UTC-tid)
+                        // Vi plockar ut timmar och minuter och applicerar på DAGENS datum för att kunna jämföra
+                        const apiDate = new Date(timeObj.time);
+                        const now = new Date();
+                        
+                        // getHours() konverterar automatiskt till din lokala tidszon (t.ex. svensk tid)
+                        targetToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), apiDate.getHours(), apiDate.getMinutes(), apiDate.getSeconds());
+                    }
                 }
 
                 combinedData.push({
-                    Time: vqTime,
+                    targetToday: targetToday,
+                    IsOpenVQ: isOpenVQ,
                     queueData: vq,
-                    Data: matchedAttraction // Kan vara undefined, hanteras nedan
+                    Data: matchedAttraction
                 });
             });
 
-            // Sortera efter tid
+            // Sortera efter tid (de utan tid/öppna hamnar sist)
             combinedData.sort((a, b) => {
-                let timeA = a.Time || "99:99:99";
-                let timeB = b.Time || "99:99:99";
-                return timeA.localeCompare(timeB);
+                if (!a.targetToday) return 1;
+                if (!b.targetToday) return -1;
+                return a.targetToday - b.targetToday;
             });
 
             if (combinedData.length === 0) {
@@ -358,15 +344,24 @@
 
             // Rendera ut allt
             combinedData.forEach(data => {
-                let timeStr = data.Time;
                 let timeHtml = '';
 
-                if (!timeStr) {
-                    timeHtml = `<p style="color: gray; font-size: 20px;" id="time">${data.queueData.status || 'VQ Closed'}</p>`;
-                } else if (getMinutesSince(timeStr) >= 0) {
-                    timeHtml = '<p style="color: rgb(80, 189, 76);" id="time">Now!</p>';
+                if (!data.IsOpenVQ || !data.targetToday) {
+                    timeHtml = `<p style="color: gray; font-size: 20px;" id="time">VQ Closed</p>`;
                 } else {
-                    timeHtml = '<p id="time">' + getRemainingTime(timeStr) + '</p>';
+                    // Räkna ut skillnaden i minuter mellan mål-tiden och nu
+                    const diffMins = Math.floor((data.targetToday - new Date()) / 60000);
+                    
+                    if (diffMins <= 0) {
+                        // Om tiden är nu eller redan passerad
+                        timeHtml = '<p style="color: rgb(80, 189, 76);" id="time">Now!</p>';
+                    } else {
+                        // Om tiden är i framtiden
+                        const hours = Math.floor(diffMins / 60);
+                        const mins = diffMins % 60;
+                        const timeText = hours > 0 ? `${hours}h ${mins}min` : `${mins}min`;
+                        timeHtml = `<p id="time">${timeText}</p>`;
+                    }
                 }
 
                 let image = "https://via.placeholder.com/80";
@@ -377,6 +372,7 @@
                     image = data.Data.images.small;
                     let minWait = data.Data.state.minWaitTime;
                     let maxWait = data.Data.state.maxWaitTime;
+                    
                     if (minWait === -1 || maxWait === -1 || !data.Data.state.isOpen) {
                         queueText = 'Physical queue: Closed';
                     } else {
